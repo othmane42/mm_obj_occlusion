@@ -1,0 +1,10 @@
+root: "/shared/databases/e-Origin/After_processing/VCO2"
+raw_path: "/shared/databases/e-Origin/raw_data"
+images_folder: "/shared/databases/e-Origin/After_processing/VCO2/products_images"
+name: "eorigin_full_multimodalDataset.csv"
+text_columns: ["Invoice_description"]
+image_column: "image_name"
+min_value: 50
+level: 2
+train_test_size: 0.1
+train_val_size: 0.11

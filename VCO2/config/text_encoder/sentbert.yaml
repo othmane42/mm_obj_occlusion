@@ -1,0 +1,11 @@
+name: "SentBert"
+init:
+    _target_: models.get_VCO2_models.SentBert
+    checkpoint: "bert-base-nli-mean-tokens"
+    
+tokenizer: null
+    
+params: null
+
+     
+

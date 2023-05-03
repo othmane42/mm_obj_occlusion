@@ -1,0 +1,9 @@
+name: "ArithmeticFusion"
+init:
+    _target_: models.commun_fusion.ArithmeticFusion
+    operation: "mul"
+    add_concat: True 
+    hidden_dim : 500
+    num_modalities : null
+
+    

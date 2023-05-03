@@ -1,0 +1,10 @@
+name: "VIT"
+init:
+    _target_: models.get_VCO2_models.VIT
+    checkpoint: "google/vit-base-patch16-224-in21k"
+    
+image_processing:
+    _target_: transformers.AutoImageProcessor.from_pretrained
+    pretrained_model_name_or_path: ${..init.checkpoint}
+params:
+    return_tensors: "pt"

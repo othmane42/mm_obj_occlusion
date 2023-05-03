@@ -1,0 +1,6 @@
+name: "ConcatLinear"
+init:
+    _target_: models.commun_fusion.ConcatWithLinear
+    hidden_dim: 500
+
+    

@@ -1,0 +1,71 @@
+dataset:
+  root: /shared/databases/e-Origin/After_processing/VCO2
+  raw_path: /shared/databases/e-Origin/raw_data
+  images_folder: /shared/databases/e-Origin/After_processing/VCO2/products_images
+  name: eorigin_full_multimodalDataset.csv
+  text_columns:
+  - Invoice_description
+  image_column: image_name
+  min_value: 50
+  level: 2
+  train_test_size: 0.1
+  train_val_size: 0.11
+model:
+  name: MMFusion
+  init:
+    _target_: models.get_VCO2_models.MMFusion
+    encoders: ???
+    fusion: ???
+    classifier: ???
+  collator:
+    init:
+      _target_: datasets.MMClassificationCollator
+      text_feature_extractors: ???
+      image_processing: ???
+  criterion:
+    _target_: torch.nn.CrossEntropyLoss
+  optimizer:
+    _target_: torch.optim.Adam
+    lr: 0.0001
+text_encoder:
+  name: SIMCSE
+  init:
+    _target_: models.get_VCO2_models.SIMCSE
+    checkpoint: princeton-nlp/sup-simcse-bert-base-uncased
+  tokenizer:
+    _target_: transformers.AutoTokenizer.from_pretrained
+    pretrained_model_name_or_path: ${..init.checkpoint}
+  params:
+    padding: true
+    truncation: true
+    return_tensors: pt
+image_encoder:
+  name: VGG16
+  init:
+    _target_: models.get_VCO2_models.VGG16
+    freeze: true
+  image_processing:
+    _target_: preprocessing.img_processing.get_vgg16_preprocess
+  params: null
+fusion:
+  name: Custom Concat
+  init:
+    _target_: models.commun_fusion.CustomConcat
+    hidden_dim: 500
+    num_modalities: 2
+classifier:
+  name: classifier
+  init:
+    _target_: models.get_VCO2_models.CustomClassifier
+    hidden_dim: 1024
+    activation_fun:
+      _target_: torch.nn.ReLU
+    num_class: ???
+    dropout_rate: 0.2
+fast_dev_run: true
+wandb:
+  project: test_vco2
+output_folder: output_runs_VCO2/
+batch_size: 32
+epochs: 1
+seed: 70

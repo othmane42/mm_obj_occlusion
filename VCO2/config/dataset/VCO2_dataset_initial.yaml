@@ -1,0 +1,10 @@
+root: "/home_nfs/amelo/projects/eorigin/tmp_dataset"
+raw_path: "/home_nfs/amelo/projects/eorigin/tmp_dataset"
+images_folder: "/home_nfs/amelo/projects/eorigin/tmp_dataset/products_images"
+name: "eorigin_initial_multimodalDataset.csv"
+text_columns: ["Invoice_description"]
+image_column: "image_name"
+min_value: 50
+level: 2
+train_test_size: 0.1
+train_val_size: 0.11
