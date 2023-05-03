@@ -7,5 +7,14 @@ python3 mm_train.py fast_dev_run=False epochs=50 image_encoder=restnet50 text_en
 ```
 
 feel free to edit your command by varying the encoder used for both modalities.
+you also have the possibility of running multiple runs as follows: 
+
+```
+python mm_train.py image_encoder=vit,clip_image,resnet50 dataset=VCO2_dataset_initial ++dataset.text_columns=[Invoice_description],[Invoice_description,category,title],null ++dataset.level=6 ++classifier.init.hidden_dim=0 fusion=arithmeticfusion,concat,lowranktensorfusion fast_dev_run=False epochs=100 --multirun
+```
+
+This instruction will launch a grid search over multiple choise of text columns , image columns , text and image encoders at once , which allows to avoid boilerplate code and increase efficency. 
+
+
 you also have the possibility to change the dataset by editing your proprer config in the `VCO2/config/dataset` folder. 
  
