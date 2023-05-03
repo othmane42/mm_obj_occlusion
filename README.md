@@ -17,4 +17,12 @@ This instruction will launch a grid search over multiple choise of text columns 
 
 
 you also have the possibility to change the dataset by editing your proprer config in the `VCO2/config/dataset` folder. 
- 
+
+## remark
+
+if you encounter any issues with `pyspellchecker` , please follow the following steps : 
+```
+git clone https://github.com/barrust/pyspellchecker pyspellchecker
+cd pyspellchecker
+git -c advice.detachedHead=false checkout ae142fac83e9517af5dce476dcfbb24bd20afad8
+``` 
