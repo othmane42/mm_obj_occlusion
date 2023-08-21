@@ -1,5 +1,0 @@
-name: "TensorFusion"
-init:
-    _target_: models.commun_fusion.TensorFusion
-
-    

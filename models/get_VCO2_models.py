@@ -126,37 +126,6 @@ class VGG16(nn.Module):
           return image_embeddings
     
 
-class SentBert(nn.Module):
-    """SentBert encoder model class"""
-    CHECKPOINT="bert-base-nli-mean-tokens" 
-    def __init__(self,checkpoint:str,freeze: bool=True) -> None:
-        super(SentBert,self).__init__() 
-        self.checkpoint = checkpoint
-        self.model = SentenceTransformer(self.checkpoint)
-        if freeze:
-            for param in self.model.parameters():
-                param.requires_grad = False   
-
-    def forward(self,x):
-        out = self.model.encode(x, convert_to_tensor=True)
-        return out
-    
-class SIMCSE(nn.Module):
-    CHECKPOINT  = "princeton-nlp/sup-simcse-bert-base-uncased"
-    def __init__(self,checkpoint: str=CHECKPOINT,freeze: bool=True) -> None:
-        super(SIMCSE,self).__init__() 
-        self.model = AutoModel.from_pretrained(checkpoint)
-        #self.model = self.model.to(DEVICE)
-        if freeze:
-            for param in self.model.parameters():
-                param.requires_grad = False
-   
-    def forward(self,x):
-        text_embeddings = self.model(**x,output_hidden_states=True, return_dict=True).pooler_output
-        return text_embeddings
-
-
-
 class CustomClassifier(nn.Module):
     def __init__(self,hidden_dim,activation_fun,num_class,dropout_rate=None) -> None:
         super(CustomClassifier,self).__init__()
@@ -220,27 +189,6 @@ class CLIPImageEncoder(nn.Module):
         with torch.no_grad():
             images_features = self.model.encode_image(images)
         return images_features.to(torch.float32)
-            
-class CLIPTextEncoder(nn.Module):
-    def __init__(self,checkpoint: str=CLIPImageEncoder.CHECKPOINT,freeze: bool=True) -> None:
-        super(CLIPTextEncoder,self).__init__()
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
-        self.model, self.preprocess = clip.load(checkpoint, device=self.device)
-
-    def forward(self,x):
-        text = clip.tokenize(x).to(device)
-        with torch.no_grad():
-                text_features = self.model.encode_text(text)
-            
-        return text_features
-
-            
-          
-
-
-
-    
-
 
 
 

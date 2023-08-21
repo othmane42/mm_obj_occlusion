@@ -1,7 +1,0 @@
-name: "LowRankTensorFusion"
-init:
-    _target_: models.commun_fusion.LowRankTensorFusion
-    rank : 16
-    output_dim : 128 
-
-    

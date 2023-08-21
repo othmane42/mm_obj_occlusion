@@ -1,6 +1,0 @@
-name: "Custom Concat"
-init:
-    _target_: models.commun_fusion.CustomConcat
-    hidden_dim: 500
-    num_modalities: 2
-    

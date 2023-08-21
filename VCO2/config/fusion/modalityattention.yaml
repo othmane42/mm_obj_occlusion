@@ -1,6 +1,0 @@
-name: "Modality_Attention"
-init:
-    _target_: models.commun_fusion.ModalityAttention
-  
-
-    

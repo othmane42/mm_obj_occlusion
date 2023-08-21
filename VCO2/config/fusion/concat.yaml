@@ -1,5 +1,0 @@
-name: "Concat"
-init:
-    _target_: models.commun_fusion.Concat
-
-    

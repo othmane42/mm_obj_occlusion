@@ -11,7 +11,6 @@ from utils.seeder import seed_worker
 from transformers import models
 from PIL import Image
 from sklearn.pipeline import Pipeline
-from preprocessing.descriptionPreprocessing import TextPreprocessing , CategoryPreprocessing
 import collections
 
 COLS = ["Invoice_description","image_name","category","title","categories"]
