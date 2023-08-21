@@ -1,90 +1,38 @@
 import torch 
 import pytorch_lightning as pl
-from typing import List
-
-from dataclasses import dataclass
 import torch.nn as nn
 import torchvision.models as models
 from transformers import  AutoTokenizer,AutoModel, ViTModel
-from sentence_transformers import SentenceTransformer
-import clip
+from collections import OrderedDict
 
-# import our library
-import torchmetrics
 
-# initialize metric
+class VoxNet(nn.Module):
+    def __init__(self, n_classes=8, input_shape=(32, 32, 32)):
+        super(VoxNet, self).__init__()
+        self.n_classes = n_classes
+        self.input_shape = input_shape
+        self.feat = torch.nn.Sequential(OrderedDict([
+            ('conv3d_1', torch.nn.Conv3d(in_channels=6,
+                                         out_channels=64, kernel_size=3, padding=1)),
+            ('relu1', torch.nn.ReLU()),
+            ('drop1', torch.nn.Dropout(p=0.2)),
+            ('conv3d_2', torch.nn.Conv3d(in_channels=64, out_channels=64, kernel_size=3)),
+            ('relu2', torch.nn.ReLU()),
+            ('pool2', torch.nn.MaxPool3d(2)),
+            ('drop2', torch.nn.Dropout(p=0.3))
+        ]))
+        x = self.feat(torch.autograd.Variable(torch.rand((1, 6) + input_shape)))
+        dim_feat = 1
+        for n in x.size()[1:]:
+            dim_feat *= n
 
-DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-class LitMMFusionModel(pl.LightningModule):
-
-    def __init__(self, model,classes,criterion,lr):
-        super(LitMMFusionModel,self).__init__()
-        self.save_hyperparameters("classes","criterion","lr")
-        self.model = model
-        self.criterion = criterion
-        self.lr= lr
-        self.classes = classes
-        self.accuracy = torchmetrics.Accuracy(task="multiclass",
-                      num_classes=len(self.classes))
-        self.top3_accuracy = torchmetrics.Accuracy(task="multiclass",top_k=3,num_classes=len(self.classes))
-        self.top5_accuracy = torchmetrics.Accuracy(task="multiclass",top_k=5,num_classes=len(self.classes))
+    def forward(self, x):
+        print("x input size is ",x.shape)
+        x = self.feat(x)
+        x = x.view(x.size(0), -1)
         
-        
-    def forward(self, x, *args, **kwargs):
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        data_input , target = batch[:-1], batch[-1]
-        output = self.model(data_input)
-        loss = self.criterion(output, target)
-        score = self.accuracy(output.argmax(1), target)
-        top3 = self.top3_accuracy(output,target)
-        top5 = self.top5_accuracy(output,target)
-        logs = {'train_loss': loss, 'train_acc': score,"train_top3":top3,"train_top5":top5, 'lr': self.optimizer.param_groups[0]['lr']}
-        self.log_dict(
-            logs,
-            on_step=False, on_epoch=True, prog_bar=True, logger=True
-        )
-        return loss
-
- 
-    def validation_step(self, batch, batch_idx):
-
-        data_input , target = batch[:-1], batch[-1]
-        output = self.model(data_input)
-        loss = self.criterion(output, target)
-        score = self.accuracy(output.argmax(1), target)
-        top3 = self.top3_accuracy(output,target)
-        top5 = self.top5_accuracy(output,target)
-        logs = {'val_loss': loss, 'val_acc': score,"val_top3":top3,"val_top5":top5}
-        self.log_dict(
-            logs,
-            on_step=False, on_epoch=True, prog_bar=True, logger=True
-        )
-        return loss
-
-    def test_step(self, batch, batch_idx):
-
-        data_input , target = batch[:-1], batch[-1]
-        output = self.model(data_input)
-        loss = self.criterion(output, target)
-        score = self.accuracy(output.argmax(1), target)
-        top3 = self.top3_accuracy(output,target )
-        top5 = self.top5_accuracy(output,target )
-        logs = {'test_loss': loss, 'test_acc': score,"test_top3":top3,"test_top5":top5}
-        self.log_dict(
-            logs,
-            on_step=False, on_epoch=True, prog_bar=True, logger=True
-        )
-        return output.argmax(1)
-
-   
-
-    def configure_optimizers(self):
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        return {'optimizer': self.optimizer}
-
+        #x = self.mlp(x)
+        return x
 
 class VIT(nn.Module):
     def __init__(self,checkpoint: str = 'google/vit-base-patch16-224-in21k',freeze: bool=True):
@@ -153,25 +101,6 @@ class CustomClassifier(nn.Module):
         return x
 
 
-class MMFusion(nn.Module):
-    def __init__(self,encoders:List,fusion,classifier) -> None:
-        super(MMFusion,self).__init__()
-        self.encoders = nn.ModuleList(encoders)
-        #self.classifier = classifier.to(DEVICE)
-        #self.fusion  = fusion.to(DEVICE)
-        self.classifier = classifier
-        self.fusion  = fusion
- 
-    def forward(self, x):
-     
-        encoded=[encoder(x[i][0]) if isinstance(x[i], list) and len(x[i]) == 1 else encoder(x[i]) for i, encoder in enumerate(self.encoders)]
-        if self.fusion is not None:
-            encoded=self.fusion(encoded)
-            out=self.classifier(encoded)
-        elif len(encoded)==1:
-            out= self.classifier(encoded[0])
-        return out
-
 
 class CLIPImageEncoder(nn.Module):
     CHECKPOINT = "ViT-B/32"
@@ -213,3 +142,25 @@ class ResNet50(nn.Module):
         x = self.net(x)
         x = torch.flatten(x, 1)
         return x
+    
+
+
+class CustomResNet50(nn.Module):
+    def __init__(self, num_classes, input_channels=3):
+        super(CustomResNet50, self).__init__()
+        self.resnet = models.resnet50(pretrained=True)
+
+        # Modify the first layer to accept custom input channels
+        self.resnet.conv1 = nn.Conv2d(input_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+
+        # Add a flattening layer
+        self.flatten = nn.Flatten()
+
+    def forward(self, x):
+        x = self.resnet(x)
+        x = self.flatten(x)
+        print("in custom resnet x shape is ",x.shape)
+        return x
+
+    def get_output_size(self):
+        return 256  # Size of the output features

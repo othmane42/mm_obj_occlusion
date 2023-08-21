@@ -7,219 +7,116 @@ import pandas as pd
 from sklearn.preprocessing import LabelEncoder #, OneHotEncoder
 from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
-from utils.seeder import seed_worker
-from transformers import models
 from PIL import Image
+import numpy as np
 from sklearn.pipeline import Pipeline
 import collections
+from torchvision import transforms
 
-COLS = ["Invoice_description","image_name","category","title","categories"]
+def load_label_file(label_file_path):
+    with open(label_file_path, 'r') as file:
+        lines = file.readlines()
 
+    labels = []
+    for line in lines:
+        parts = line.split()
+        label = parts[0]
+        values = [float(part) for part in parts[1:]]
+        labels.append((label, values))
+
+    return labels
+
+class_to_index = {
+    'Car': 0,
+    'Van': 1,
+    'Truck': 2,
+    'Pedestrian': 3,
+    'Person_sitting': 4,
+    'Cyclist': 5,
+    'Tram': 6,
+    'Misc': 7
+}
+# Define your dataset class and data loaders
 class CustomDataset(Dataset):
-    """CustomDataset with necessary functions for PyTorch.
-    Takes input data descriptions (df_X) and target HS codes (df_Y) as well
-    as column names used for training (colname1234)."""
-    def __init__(self,
-                 df_X,
-                 df_Y,
-                 text_columns = ["Commodity Description of the goods","title","category"],
-                 colname_image=None,
-                 transform=None,
-                ):
-        """Init for Custom Dataset."""
-
-
-        self.df_X = df_X.copy()
-        self.df_Y = df_Y.copy()
-        self.colname_image=colname_image
-        self.text_columns =[] if text_columns is None else text_columns 
-        self.transform = transform
-
-
-    def __getitem__(self,index):
-        """Return the input data and target for an index,
-        according to the colnames used in __init__."""
-        if torch.is_tensor(index):
-            index = index.tolist()
-        return_elements = []
-        if self.colname_image!=None:
-            im_path = self.df_X.iloc[index][self.colname_image]
-            return_elements.append(im_path)
-        label = self.df_Y[index]
-        
-        for column in self.text_columns:
-            if column!=None:
-                  return_elements.append(self.df_X.iloc[index][column]) 
-        return_elements.append(label)
-        # emballé c'est pesé :D
-        return (*return_elements,)
-    
+    def __init__(self, image_folder, voxel_folder, label_folder):
+        self.image_folder = image_folder
+        self.voxel_folder = voxel_folder
+        self.label_folder = label_folder
+        self.image_paths = sorted(os.listdir(image_folder))
+        self.voxel_paths = sorted(os.listdir(voxel_folder))
+        self.label_paths = sorted(os.listdir(label_folder))
+        self.image_transform = transforms.Compose([
+            transforms.Resize((224, 224)),  # Resize images to a consistent size
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     def __len__(self):
-        """Return length of input dataset."""
-        return len(self.df_X)
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        # Load and preprocess image data
+        image = Image.open(os.path.join(self.image_folder, self.image_paths[idx]))  # Load and preprocess image data
+        if self.image_transform:
+            image = self.image_transform(image)
+
+
+        # Load and preprocess voxel data
+        voxel_data = np.load(os.path.join(self.voxel_folder, self.voxel_paths[idx]))
+        target_shape = (32, 32, 32)
+        pad_value = 0
+        padded_voxel_data = np.pad(voxel_data, [(0, max(target_shape[0] - voxel_data.shape[0], 0)),
+                                                (0, max(target_shape[1] - voxel_data.shape[1], 0)),
+                                                (0, max(target_shape[2] - voxel_data.shape[2], 0))], mode='constant', constant_values=pad_value)
+        cropped_voxel_data = padded_voxel_data[:target_shape[0], :target_shape[1], :target_shape[2]]
+        voxel_data_resized = torch.from_numpy(cropped_voxel_data).float()
+
+        # Load and preprocess label data
+        label_lines = open(os.path.join(self.label_folder, self.label_paths[idx])).readlines()
+        target = {}
+        #print("hello 1")
+        target['boxes'] = []
+        target['labels'] = []
+
+        for line in label_lines:
+            parts = line.strip().split()
+            if parts[0] in ['Car', 'Van', 'Truck', 'Pedestrian', 'Person_sitting', 'Cyclist', 'Tram', 'Misc']:
+                target['labels'].append(class_to_index[parts[0]])  # Convert class to index and add to labels
+                target['boxes'].append([float(parts[4]), float(parts[5]), float(parts[6]), float(parts[7])])
+
+        # Pad the target['boxes'] tensor to the same length
+        max_num_boxes = max(len(target['boxes']), 10)#10  # Adjust this based on your maximum expected number of boxes
+
+        target['labels'] = torch.tensor(target['labels'], dtype=torch.int64)  # Convert labels to tensor
+        target['boxes'] = torch.tensor(target['boxes'], dtype=torch.float32)
+        print("voxel data shape",voxel_data_resized.shape)
+        return image, voxel_data_resized, target
     
+def collate_fn_map(batch):
+    images, voxel_data, targets = zip(*batch)
 
-class MMClassificationCollator:
-    """Collator Class useful for Pytorch DataLoaders to produce tokenized inputs instead of strings."""
-    def __init__(self,text_feature_extractors,image_processing):
-        self.text_feature_extractors=text_feature_extractors
-        self.image_processing= image_processing
-        
+    # Determine the maximum voxel size within the batch
+    max_voxel_shape = max(data.shape for data in voxel_data)
 
-    def process_image(self,batch):
-        transform_fun, params=self.image_processing["transform_fun"],self.image_processing["params"]
-        images=[Image.open(x[0]).convert('RGB') for x in batch]
-        if params is not None:
-            processed_images = transform_fun(
-                images=images,
-               **params,
-            )
-           # processed_images["pixe_values"] = torch.Tensor(processed_images["pixe_values"])
-            return processed_images
-        elif transform_fun is not None:            
-            return transform_fun(images)
-        else:
-            return images
+    # Pad or crop voxel_data tensors to the same size within the batch
+    padded_voxel_data = torch.stack(
+        [F.pad(data, (0, max_voxel_shape[2] - data.shape[2], 0, max_voxel_shape[1] - data.shape[1], 0, max_voxel_shape[0] - data.shape[0]))
+         if data.shape != max_voxel_shape
+         else data
+         for data in voxel_data]
+    )
 
-    def process_texts(self,batch):
-        text_encodings=[] 
-        for input_idx,config in self.text_feature_extractors:
-            tokenizer = config["tokenizer"]
-            kwargs = config.get("params", {})
-            if tokenizer is not None:
-                encoding =tokenizer([x[input_idx] for x in batch], **kwargs)
-            else:
-                encoding= [x[input_idx] for x in batch]
-            text_encodings.append(encoding)
-        return (*text_encodings,)
-        
-    def __call__(self, batch):
-        """Collator."""
+    return torch.stack(images), padded_voxel_data, targets
+              
 
-        output = []
-        if self.image_processing is not None:
-            image_encoders = self.process_image(batch)
-            output.append(image_encoders)
-        if self.text_feature_extractors is not None:
-            text_encoders=self.process_texts(batch)
-            output.extend(text_encoders)
-        labels = torch.tensor([x[-1] for x in batch], dtype=torch.long)    
-        output.append(labels)
-        return (*output,)   
-            
-
-def data_cleaning(data_path,output_path,image_folder):
-
-
-    df_data = pd.read_csv(data_path)
-
-    pipeline_preprocessing=Pipeline(steps=[
-         ("desc_processing",TextPreprocessing(mode="classic",column_name="Commodity Description of the goods",
-                 special_substitution=True,correct_spelling=True,camel_case_split=True)),
-         ("category_preparation",CategoryPreprocessing(column_names=["category","categories"])),
-         ('cats_processing',TextPreprocessing(mode="classic",column_name="categories",
-                            special_substitution=True,correct_spelling=False,camel_case_split=True,semicolonSep=True)),
-         ('cat_processing',TextPreprocessing(mode="classic",column_name="category",
-                            special_substitution=True,correct_spelling=False,camel_case_split=True)), 
-         ("title_processing",TextPreprocessing(mode="classic",column_name="title",
-                 special_substitution=True,correct_spelling=True,camel_case_split=True))
-         
-         ])   
-
-    df_cleaned=pipeline_preprocessing.transform(df_data)
-    df_cleaned=df_cleaned.rename(columns={"HS2":"Proposed_HS2",
-                                          "HS4":"Proposed_HS4",
-                                          "HS6":"Proposed_HS6",
-                                          "Commodity Description of the goods":"Invoice_description"})
-
-    df_cleaned["image_name"] = df_cleaned["image_name"].apply(lambda x : os.path.join(image_folder,x.split("/")[-1]))
-    df_cleaned["Invoice_description"].fillna(data['category'],inplace=True)
-    df_cleaned.drop_duplicates(subset="Invoice_description",inplace=True) 
-    df_cleaned.to_csv(output_path,index=False)
-
-
-
-            
-def get_dataset(file_path: str, min_value: int, level: int, train_test_size: float, train_val_size: float, seed: int,drop_na=False,columns=None):
-        """Load the dataset with parameters and split it into train, val and test.
-        Args:
-        file_path: path to the dataset file.
-        min_value: minimum_value of samples per 'level' to consider as a class.
-        level: HS code level (2, 4 or 6 as an integer).
-        train_test_size: split size between train and test.
-        train_val_size: split size between remaining train and val.
-        
-        Return: 
-        X_train:
-        y_train:
-        X_val:
-        y_val:
-        X_test:
-        y_test:
-        hs_list: list of unique HS{}.format(level) codes considered as classes for training
-        based on the minimal number of 'min_value' samples.
-        """
-        input_df = pd.read_csv(file_path)
-        
-        # Check the chapter distribution and select the HS{}.format(level) index containing more than 'min_value' data samples for training
-        hs_list = input_df["Proposed_HS{}".format(level)].value_counts()[input_df["Proposed_HS{}".format(level)].value_counts()>=min_value].index
-        
-        # Get the input samples associated with those HS{}
-        dataset = input_df[input_df["Proposed_HS{}".format(level)].isin(hs_list)]
-        dataset.reset_index(inplace=True)
-        if drop_na:
-            if columns is not None:
-                non_null_data=input_df.dropna(subset=COLS)
-                hs_list = non_null_data["Proposed_HS{}".format(level)].value_counts()[non_null_data["Proposed_HS{}".format(level)].value_counts()>=min_value].index
-                # Get the input samples associated with those HS{}
-                non_null_data = non_null_data[non_null_data["Proposed_HS{}".format(level)].isin(hs_list)]
-                y = non_null_data["Proposed_HS{}".format(level)]
-                _,X_test,_,y_test=train_test_split(non_null_data,y,test_size=train_test_size,stratify=y,random_state=seed)
-                remaining_data=input_df[~input_df.Invoice_description.isin(X_test.Invoice_description)]
-                remaining_data=remaining_data.dropna(subset=columns)
-                dataset=remaining_data[remaining_data["Proposed_HS{}".format(level)].isin(hs_list)]
-                dataset.reset_index(inplace=True)
-                le = LabelEncoder()
-                X, y = dataset, dataset["Proposed_HS{}".format(level)]
-                y = le.fit_transform(dataset["Proposed_HS{}".format(level)])
-                y_test = le.transform(y_test)
-                X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=train_val_size, stratify=y, random_state=seed)
-                hs_list_test= pd.Series(y_test).value_counts().index
-                hs_list_train= pd.Series(y_train).value_counts().index
-                hs_list_val= pd.Series(y_val).value_counts().index
-                
-                assert len(hs_list_train)==len(hs_list_val)==len(hs_list_test), f"make sure the class distribution is equal between train/val/test ! train({len(hs_list_train)}) val({len(hs_list_val)}) test({len(hs_list_test)})"
-                return X_train, y_train, X_val, y_val, X_test, y_test, hs_list, le
-                        
-        X, y = dataset, dataset["Proposed_HS{}".format(level)]
-        le = LabelEncoder()
-        y = le.fit_transform(y)
-        
-        X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=train_test_size, stratify=y, random_state=seed)
-        X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=train_val_size, stratify=y_train, random_state=seed)
-        
-        return X_train, y_train, X_val, y_val, X_test, y_test, hs_list, le
-    
-
-def data_loader(X, y, collate_fn, text_columns,
-                        batch_size,
-                        colname_image=None,
-                        transform=None,shuffle=True,num_workers=0):
+def data_loader(image_folder,voxel_folder,label_folder,batch_size=3):
     """Takes input dataset and colnames and generates
     a PyTorch DataLoader."""
-    
-    dataset = CustomDataset(X, y, text_columns,
-                            colname_image=colname_image,
-                            transform=transform)
-    dataloader = DataLoader(dataset,
-                            batch_size=batch_size,
-                            collate_fn=collate_fn,
-                            shuffle=shuffle,
-                            worker_init_fn=seed_worker,
-                            num_workers=num_workers)
-    
-    return dataloader
+    # Create data loaders
+    train_dataset = CustomDataset(image_folder, voxel_folder, label_folder)
+    train_data_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn_map)  
+    return train_data_loader
     
 
   
