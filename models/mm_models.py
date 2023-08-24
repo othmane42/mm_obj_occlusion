@@ -98,9 +98,9 @@ class MMFusion(nn.Module):
         self.fusion  = fusion
  
     def forward(self, x):
-     
-        encoded=[encoder(x[i][0]) if isinstance(x[i], list) and len(x[i]) == 1 else encoder(x[i]) for i, encoder in enumerate(self.encoders)]
+        encoded=[encoder(x[i]) if isinstance(x[i], tuple)  and len(x[i]) == 1 else encoder(x[i]) for i, encoder in enumerate(self.encoders)]
         if self.fusion is not None:
+            print(encoded[0].shape,encoded[1].shape)
             encoded=self.fusion(encoded)
             out=self.classifier(encoded)
         elif len(encoded)==1:

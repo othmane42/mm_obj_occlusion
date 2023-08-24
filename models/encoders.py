@@ -12,7 +12,7 @@ class VoxNet(nn.Module):
         self.n_classes = n_classes
         self.input_shape = input_shape
         self.feat = torch.nn.Sequential(OrderedDict([
-            ('conv3d_1', torch.nn.Conv3d(in_channels=6,
+            ('conv3d_1', torch.nn.Conv3d(in_channels=1,
                                          out_channels=64, kernel_size=3, padding=1)),
             ('relu1', torch.nn.ReLU()),
             ('drop1', torch.nn.Dropout(p=0.2)),
@@ -21,18 +21,14 @@ class VoxNet(nn.Module):
             ('pool2', torch.nn.MaxPool3d(2)),
             ('drop2', torch.nn.Dropout(p=0.3))
         ]))
-        x = self.feat(torch.autograd.Variable(torch.rand((1, 6) + input_shape)))
-        dim_feat = 1
-        for n in x.size()[1:]:
-            dim_feat *= n
-
+        self.flatten = torch.nn.Flatten()
+    
     def forward(self, x):
-        print("x input size is ",x.shape)
         x = self.feat(x)
-        x = x.view(x.size(0), -1)
-        
-        #x = self.mlp(x)
+        x = self.flatten(x)
         return x
+
+
 
 class VIT(nn.Module):
     def __init__(self,checkpoint: str = 'google/vit-base-patch16-224-in21k',freeze: bool=True):
@@ -157,7 +153,9 @@ class CustomResNet50(nn.Module):
         self.flatten = nn.Flatten()
 
     def forward(self, x):
+        print("x in input resnet",x.shape)
         x = self.resnet(x)
+        print("x shape before flattening ",x.shape)
         x = self.flatten(x)
         print("in custom resnet x shape is ",x.shape)
         return x

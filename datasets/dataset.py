@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from torch.utils.data import Dataset, DataLoader
 from PIL import Image
 import numpy as np
+import torch.nn.functional as F
 from sklearn.pipeline import Pipeline
 import collections
 from torchvision import transforms
@@ -90,7 +91,7 @@ class CustomDataset(Dataset):
 
         target['labels'] = torch.tensor(target['labels'], dtype=torch.int64)  # Convert labels to tensor
         target['boxes'] = torch.tensor(target['boxes'], dtype=torch.float32)
-        print("voxel data shape",voxel_data_resized.shape)
+        voxel_data_resized = voxel_data_resized.unsqueeze(dim=0)
         return image, voxel_data_resized, target
     
 def collate_fn_map(batch):
@@ -106,7 +107,7 @@ def collate_fn_map(batch):
          else data
          for data in voxel_data]
     )
-
+    print("padded voxel data in fn shape is ",padded_voxel_data.shape)
     return torch.stack(images), padded_voxel_data, targets
               
 
